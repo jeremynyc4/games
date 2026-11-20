@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ABCDaGames</title>
+<style>
+  /* Layout: a heading, then a grid of tiles, one per game. The grid is one column on a phone and two on a wider screen. */
+  :root {
+    color-scheme: light;
+    --ink: #2B2A33;
+    --paper: #FFF9EC;
+    --muted: #5F5B6B;
+    --wall: #2F8F9D;
+    --wall-stripe: #2A8490;
+    --accent: #1F6A75;
+    --font-display: ui-rounded, "Arial Rounded MT Bold", "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+    --font-body: ui-rounded, "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+    --font-mono: ui-monospace, "Cascadia Mono", Consolas, Menlo, monospace;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+
+  html { background: var(--wall); }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    color: var(--ink);
+    background: repeating-linear-gradient(90deg, var(--wall) 0, var(--wall) 28px, var(--wall-stripe) 28px, var(--wall-stripe) 56px);
+    font-family: var(--font-body);
+    font-size: 17px;
+    line-height: 1.4;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
+
+  .app { max-width: 980px; margin: 0 auto; padding-block: 24px 40px; }
+
+  .sign {
+    display: inline-block;
+    background: var(--paper);
+    border: 3px solid var(--ink);
+    border-radius: 16px;
+    box-shadow: 6px 6px 0 var(--ink);
+    padding: 14px 22px 16px;
+    margin-bottom: 26px;
+  }
+
+  h1 { font-family: var(--font-display); font-size: 40px; line-height: 1.05; margin: 0 0 4px; letter-spacing: -0.5px; }
+  .sign p { margin: 0; color: var(--muted); }
+
+  .shelf { display: grid; grid-template-columns: 1fr; gap: 26px; }
+
+  @media (min-width: 720px) {
+    .shelf { grid-template-columns: 1fr 1fr; }
+    h1 { font-size: 52px; }
+  }
+
+  .tile {
+    display: block;
+    background: var(--paper);
+    color: var(--ink);
+    text-decoration: none;
+    border: 3px solid var(--ink);
+    border-radius: 16px;
+    box-shadow: 6px 6px 0 var(--ink);
+    overflow: hidden;
+    transition: transform 0.12s ease-out, box-shadow 0.12s ease-out;
+  }
+
+  .tile:hover, .tile:focus-visible { transform: translate(-2px, -2px); box-shadow: 8px 8px 0 var(--ink); }
+  .tile:active { transform: translate(3px, 3px); box-shadow: 3px 3px 0 var(--ink); }
+  .tile:focus-visible { outline: 4px solid #F2D25C; outline-offset: 3px; }
+
+  /* Every cover is twice as wide as it is tall. A game with no cover gets a plain colored block with its name instead. */
+  .cover {
+    display: grid;
+    place-items: center;
+    aspect-ratio: 2 / 1;
+    background: #F2D25C;
+    border-bottom: 3px solid var(--ink);
+    font-family: var(--font-display);
+    font-size: 30px;
+    font-weight: 700;
+    text-align: center;
+    padding: 0 16px;
+  }
+
+  .cover img { display: block; width: 100%; height: 100%; object-fit: cover; }
+  .cover.pictured { padding: 0; }
+
+  .words { padding: 14px 18px 18px; }
+
+  .tag {
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 4px;
+  }
+
+  h2 { font-family: var(--font-display); font-size: 26px; line-height: 1.15; margin: 0 0 4px; }
+  .words p.about { margin: 0; }
+
+  .note { color: var(--paper); font-family: var(--font-mono); font-weight: 700; margin: 0; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .tile { transition: none; }
+  }
+</style>
+</head>
+<body>
+
+<main class="app">
+  <header class="sign">
+    <h1>ABCDaGames</h1>
+    <p>Small games to play in a browser. Tap one to play.</p>
+  </header>
+  <p class="note" id="note" aria-live="polite">Stocking the shelf&hellip;</p>
+  <div class="shelf" id="shelf"></div>
+</main>
+
+<script id="shelf-logic">
+// What counts as a game and how a game becomes a tile. test-shelf.js reads
+// this block on its own, so it holds only data and functions that return
+// values, and nothing that touches the page or the network.
+
+// A game is a public repository in this GitHub account whose name is
+// "game-", a number, a hyphen, and the game's name, with GitHub Pages on.
+// Adding a new repository like that is all it takes to add a tile.
+const cOwner_str = 'jeremynyc4';
+const cReposUrl_str = 'https://api.github.com/users/' + cOwner_str + '/repos?per_page=100';
+const cSiteUrl_str = 'https://' + cOwner_str + '.github.io/';
+const cCoverFile_str = 'cover.png';
+const cNamePattern_obj = /^game-(\d+)-(.+)$/;
+const cTitlePattern_obj = /<title>([^<]*)<\/title>/i;
+const cSmallWords_arr = ['a', 'an', 'and', 'at', 'for', 'in', 'of', 'on', 'or', 'the', 'to'];
+
+// The shelf as it stood when this page was last changed. The page shows
+// these if GitHub cannot be reached, so the shelf is never empty.
+const cStockGames_arr = [
+  { name: 'game-01-mix-it-up', description: 'Figure out which colors to mix!', has_pages: true },
+  { name: 'game-04-help-desk-legends', description: 'Guess how the help desk call ends!', has_pages: true },
+  { name: 'game-05-odd-sock', description: 'Find the sock with no partner!', has_pages: true }
+];
+const cStockTitles_obj = {
+  'game-01-mix-it-up': 'Mix It Up',
+  'game-04-help-desk-legends': 'Help Desk Legends',
+  'game-05-odd-sock': 'Odd Sock'
+};
+
+// >>>>> fnTitleFromSlug_str <<<<<
+// Turns the last part of a repository name, such as "call-the-huck", into
+// a title, such as "Call the Huck". It is the stand-in until the game's own
+// page has been read for its real title.
+function fnTitleFromSlug_str(pSlug_str) {
+  return pSlug_str.split('-').map(function (pWord_str, pIndex_int) {
+    if (pIndex_int > 0 && cSmallWords_arr.indexOf(pWord_str) >= 0) {
+      return pWord_str;
+    }
+    return pWord_str.charAt(0).toUpperCase() + pWord_str.slice(1);
+  }).join(' ');
+}
+
+// >>>>> fnGamesFromRepos_arr <<<<<
+// Picks the games out of a list of repositories and puts them in order by
+// their numbers. Each game carries what its tile needs.
+function fnGamesFromRepos_arr(pRepos_arr) {
+  const cRadix_int = 10;
+  var vGames_arr = [];
+  pRepos_arr.forEach(function (pRepo_obj) {
+    var vMatch_arr = cNamePattern_obj.exec(pRepo_obj.name || '');
+    if (vMatch_arr && pRepo_obj.has_pages && !pRepo_obj.private && !pRepo_obj.archived) {
+      vGames_arr.push({
+        repo_str: pRepo_obj.name,
+        number_int: parseInt(vMatch_arr[1], cRadix_int),
+        number_str: vMatch_arr[1],
+        title_str: cStockTitles_obj[pRepo_obj.name] || fnTitleFromSlug_str(vMatch_arr[2]),
+        about_str: pRepo_obj.description || '',
+        url_str: cSiteUrl_str + pRepo_obj.name + '/',
+        cover_str: cSiteUrl_str + pRepo_obj.name + '/' + cCoverFile_str
+      });
+    }
+  });
+  vGames_arr.sort(function (pFirst_obj, pSecond_obj) {
+    return pFirst_obj.number_int - pSecond_obj.number_int;
+  });
+  return vGames_arr;
+}
+
+// >>>>> fnTitleFromPage_str <<<<<
+// Reads a game's title out of the text of its page. Returns an empty string
+// if the page has none.
+function fnTitleFromPage_str(pPage_str) {
+  const cMatch_arr = cTitlePattern_obj.exec(pPage_str);
+  return cMatch_arr ? cMatch_arr[1].trim() : '';
+}
+</script>
+
+<script>
+// The page itself: it asks GitHub for the account's repositories each time
+// it loads, builds a tile for every game, and then reads each game's own
+// page for its real title.
+
+// >>>>> fnMyLogger <<<<<
+// The browser version of the logger. A web page cannot reach the log
+// spreadsheet, so each entry goes to the browser console instead.
+function fnMyLogger(pMessage_str, pFunction_str, pValues_str, pLineNumber_int, pIsError_bol) {
+  const cLogType_str = pIsError_bol ? 'Error' : 'Log';
+  const cEntry_str = [cLogType_str, 'index.html', pFunction_str, pLineNumber_int, String(pMessage_str), pValues_str].join(' | ');
+  if (pIsError_bol) {
+    console.error(cEntry_str);
+  } else {
+    console.log(cEntry_str);
+  }
+}
+
+// >>>>> fnLineNumber_int <<<<<
+// The line number an error was raised on, read from its stack trace.
+// Apps Script's V8 runtime has no Error.lineNumber (that exists only in
+// Firefox), so the stack is the only place the line number is recorded.
+// Returns 'N/A' when the stack carries no line number.
+function fnLineNumber_int(pError_obj) {
+  const cStack_str = String(pError_obj && pError_obj.stack ? pError_obj.stack : '');
+  const cMatch_arr = cStack_str.match(/:(\d+)(?::\d+)?\)?\s*$/m);
+  const cRadix_int = 10;
+  if (cMatch_arr) {
+    return parseInt(cMatch_arr[1], cRadix_int);
+  }
+  return 'N/A';
+}
+
+// >>>>> fnBuildTile_obj <<<<<
+// Builds one game's tile: its cover, its number, its name, and its
+// description, all inside one link to the game.
+function fnBuildTile_obj(pGame_obj) {
+  var vValues_str = pGame_obj.repo_str;
+  var vIsError_bol = true;
+  var vTile_obj;
+  var vCover_obj;
+  var vPicture_img;
+  var vWords_obj;
+  var vTag_obj;
+  var vTitle_obj;
+  var vAbout_obj;
+  try {
+    vTile_obj = document.createElement('a');
+    vTile_obj.className = 'tile';
+    vTile_obj.href = pGame_obj.url_str;
+
+    vCover_obj = document.createElement('div');
+    vCover_obj.className = 'cover pictured';
+    vPicture_img = document.createElement('img');
+    vPicture_img.alt = '';
+    vPicture_img.loading = 'lazy';
+    // A game with no cover picture shows its name on a plain block instead.
+    vPicture_img.addEventListener('error', function () {
+      vCover_obj.className = 'cover';
+      vCover_obj.textContent = vTitle_obj.textContent;
+    });
+    vPicture_img.src = pGame_obj.cover_str;
+    vCover_obj.appendChild(vPicture_img);
+
+    vWords_obj = document.createElement('div');
+    vWords_obj.className = 'words';
+    vTag_obj = document.createElement('p');
+    vTag_obj.className = 'tag';
+    vTag_obj.textContent = 'Game ' + pGame_obj.number_str;
+    vTitle_obj = document.createElement('h2');
+    vTitle_obj.textContent = pGame_obj.title_str;
+    vAbout_obj = document.createElement('p');
+    vAbout_obj.className = 'about';
+    vAbout_obj.textContent = pGame_obj.about_str;
+    vWords_obj.appendChild(vTag_obj);
+    vWords_obj.appendChild(vTitle_obj);
+    vWords_obj.appendChild(vAbout_obj);
+
+    vTile_obj.appendChild(vCover_obj);
+    vTile_obj.appendChild(vWords_obj);
+    fnReadTitle(pGame_obj, vTitle_obj);
+    return vTile_obj;
+  } catch (vError_obj) {
+    fnMyLogger(vError_obj, 'fnBuildTile_obj', vValues_str, fnLineNumber_int(vError_obj), vIsError_bol);
+    return document.createElement('div');
+  }
+}
+
+// >>>>> fnReadTitle <<<<<
+// Reads a game's own page and puts its real title on the tile. If the page
+// cannot be read, the tile keeps the title worked out from the repository's
+// name.
+function fnReadTitle(pGame_obj, pTitle_obj) {
+  var vValues_str = pGame_obj.repo_str;
+  var vIsError_bol = true;
+  try {
+    fetch(pGame_obj.url_str).then(function (pResponse_obj) {
+      return pResponse_obj.ok ? pResponse_obj.text() : '';
+    }).then(function (pPage_str) {
+      const cTitle_str = fnTitleFromPage_str(pPage_str);
+      if (cTitle_str) {
+        pTitle_obj.textContent = cTitle_str;
+      }
+    }).catch(function (pReason_obj) {
+      fnMyLogger(pReason_obj, 'fnReadTitle', vValues_str, 'N/A', false);
+    });
+  } catch (vError_obj) {
+    fnMyLogger(vError_obj, 'fnReadTitle', vValues_str, fnLineNumber_int(vError_obj), vIsError_bol);
+  }
+}
+
+// >>>>> fnShowGames <<<<<
+// Fills the shelf with one tile per game.
+function fnShowGames(pGames_arr) {
+  var vValues_str = String(pGames_arr.length);
+  var vIsError_bol = true;
+  var vShelf_obj;
+  var vNote_obj;
+  try {
+    vShelf_obj = document.getElementById('shelf');
+    vNote_obj = document.getElementById('note');
+    vShelf_obj.innerHTML = '';
+    pGames_arr.forEach(function (pGame_obj) {
+      vShelf_obj.appendChild(fnBuildTile_obj(pGame_obj));
+    });
+    vNote_obj.hidden = pGames_arr.length > 0;
+    vNote_obj.textContent = 'The shelf is empty right now.';
+  } catch (vError_obj) {
+    fnMyLogger(vError_obj, 'fnShowGames', vValues_str, fnLineNumber_int(vError_obj), vIsError_bol);
+  }
+}
+
+// >>>>> fnLoadShelf <<<<<
+// Asks GitHub which games exist and shows them. If GitHub cannot be
+// reached, or it turns the request away, the page shows the games it knew
+// about when it was last changed.
+function fnLoadShelf() {
+  var vValues_str = cReposUrl_str;
+  var vIsError_bol = true;
+  try {
+    fetch(cReposUrl_str, { headers: { Accept: 'application/vnd.github+json' } }).then(function (pResponse_obj) {
+      if (!pResponse_obj.ok) {
+        throw new Error('GitHub answered ' + pResponse_obj.status);
+      }
+      return pResponse_obj.json();
+    }).then(function (pRepos_arr) {
+      fnShowGames(fnGamesFromRepos_arr(pRepos_arr));
+    }).catch(function (pReason_obj) {
+      fnMyLogger(pReason_obj, 'fnLoadShelf', vValues_str, 'N/A', false);
+      fnShowGames(fnGamesFromRepos_arr(cStockGames_arr));
+    });
+  } catch (vError_obj) {
+    fnMyLogger(vError_obj, 'fnLoadShelf', vValues_str, fnLineNumber_int(vError_obj), vIsError_bol);
+    fnShowGames(fnGamesFromRepos_arr(cStockGames_arr));
+  }
+}
+
+fnLoadShelf();
+</script>
+</body>
+</html>
