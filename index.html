@@ -155,6 +155,23 @@ const cStockTitles_obj = {
   'game-05-odd-sock': 'Odd Sock'
 };
 
+// Games that are played somewhere other than a repository's own site, so
+// GitHub's list cannot supply them. Each one names where its tile leads and
+// carries its cover picture in this page's covers folder. A game listed
+// here steps aside if a published repository with the same name turns up.
+const cElsewhereGames_arr = [
+  {
+    repo_str: 'game-02-boombox-bars',
+    number_int: 2,
+    number_str: '02',
+    title_str: 'Boombox Bars',
+    about_str: 'Rap along and fill in the rhymes!',
+    url_str: 'https://claude.ai/artifact/99szYEEa36SkGkNavYgHMb',
+    cover_str: 'covers/game-02-boombox-bars.png',
+    where_str: 'Plays on claude.ai'
+  }
+];
+
 // >>>>> fnTitleFromSlug_str <<<<<
 // Turns the last part of a repository name, such as "call-the-huck", into
 // a title, such as "Call the Huck". It is the stand-in until the game's own
@@ -184,8 +201,17 @@ function fnGamesFromRepos_arr(pRepos_arr) {
         title_str: cStockTitles_obj[pRepo_obj.name] || fnTitleFromSlug_str(vMatch_arr[2]),
         about_str: pRepo_obj.description || '',
         url_str: cSiteUrl_str + pRepo_obj.name + '/',
-        cover_str: cSiteUrl_str + pRepo_obj.name + '/' + cCoverFile_str
+        cover_str: cSiteUrl_str + pRepo_obj.name + '/' + cCoverFile_str,
+        where_str: ''
       });
+    }
+  });
+  cElsewhereGames_arr.forEach(function (pGame_obj) {
+    const cIsPublished_bol = vGames_arr.some(function (pEach_obj) {
+      return pEach_obj.repo_str === pGame_obj.repo_str;
+    });
+    if (!cIsPublished_bol) {
+      vGames_arr.push(pGame_obj);
     }
   });
   vGames_arr.sort(function (pFirst_obj, pSecond_obj) {
@@ -271,7 +297,7 @@ function fnBuildTile_obj(pGame_obj) {
     vWords_obj.className = 'words';
     vTag_obj = document.createElement('p');
     vTag_obj.className = 'tag';
-    vTag_obj.textContent = 'Game ' + pGame_obj.number_str;
+    vTag_obj.textContent = 'Game ' + pGame_obj.number_str + (pGame_obj.where_str ? ' · ' + pGame_obj.where_str : '');
     vTitle_obj = document.createElement('h2');
     vTitle_obj.textContent = pGame_obj.title_str;
     vAbout_obj = document.createElement('p');
@@ -283,7 +309,11 @@ function fnBuildTile_obj(pGame_obj) {
 
     vTile_obj.appendChild(vCover_obj);
     vTile_obj.appendChild(vWords_obj);
-    fnReadTitle(pGame_obj, vTitle_obj);
+    // A game played elsewhere already carries its real title, and its page
+    // belongs to another site, which this page cannot read.
+    if (!pGame_obj.where_str) {
+      fnReadTitle(pGame_obj, vTitle_obj);
+    }
     return vTile_obj;
   } catch (vError_obj) {
     fnMyLogger(vError_obj, 'fnBuildTile_obj', vValues_str, fnLineNumber_int(vError_obj), vIsError_bol);

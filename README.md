@@ -23,6 +23,8 @@ Each tile shows:
 2. The game's name, which is the title of the game's own page.
 3. The game's description, which is the description on the game's repository.
 
+A game that is played somewhere else, such as Boombox Bars on claude.ai, is listed inside the page, with its cover picture in the `covers` folder here. Its tile says where it plays.
+
 If GitHub cannot be reached, the page shows the games it knew about when it was last changed.
 
 ## Made with
